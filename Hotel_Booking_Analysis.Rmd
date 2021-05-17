@@ -1,0 +1,723 @@
+---
+title: "Analysis Report of Hotel Booking"
+author: "Authors: Walinsara Chinjaturapatr and Rosabel Bassil"
+data: "12/2/2020"
+output: 
+  html_document: default
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r Install packages:packcircles,viridis}
+#Install necessary packages
+#install.packages("packcircles")
+#install.packages("viridis")
+#install.packages("caTools")
+```
+
+```{r Load tidyverse, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(packcircles)
+library(viridis)
+library(caTools)
+library(broom)
+
+hotel_df <- read.csv("hotel_bookings.csv")
+#view(hotel_df)
+```
+
+# Part 1: Framing the problem
+
+## 1.1 Problem recognition:
+
+Hotels need business models to ameliorate their businesses in accordance with their data trends and datasets. Moreover, with Covid-19 contributing in the decrease of the amount of people booking hotel rooms, hotels are in need of more guides and analysis to be able to survive these tough times. For that reason, we will be studying hotels bookings and cancellation data while taking into consideration the different market segments performing the bookings and cancellations so that more targeted hotel sector information  will guide all hotels to a better business plans.   
+
+We were able to find hotel real data for 2 hotels both located in Portugal: a resort hotel at the region of Algrave and a city hotel at the city of Lisbon. It is to the advantage of our study that these two hotels are located in different areas of the same country, since it will make our analysis on the general trend of all hotels bookings and cancellation more accurate. In this dataset, each observation represents a hotel booking, with 32 variables and 119,390 observations describing resort hotel and the city hotel. It also comprehends bookings due to arrive between the 1st of July of 2015 and the 31st of August 2017, including bookings that effectively arrived and bookings that were canceled. Furthermore, since this is hotel real data, hotels can use this information as a good market guide to know what and who to target.
+
+```{r Dimension }
+dim(hotel_df)
+```
+
+Because numerous factors affect hotels in various ways, hotels need to know what factors may affect them the most. 
+
+Our study can guide us into analyzing hotel cancellations correctly which would help them improving and would boost their work. This shall be done through predicting the right number of cancellations and the different market segment's relation to cancellations. Moreover, our aim is to see if segment market affects cancellation which will lead hotels to better a understanding on cancellation problems, to be better prepared for them  and to better target the correct market segments which would help in decreasing cancellations. 
+
+Based on the above, we will be analyzing this data to help solving the customer segmentation problems of the hotels which can enable them to know which guests to target in order to help decrease the number of cancellations. In addition, we will be checking if segment markets affect booking cancellations and how they affect them.
+
+The testable hypothesis is to see if the segment market affects cancellations, therefore we will study the segment markets’ effects on hotel cancellations.
+
+<br/>
+<br/>
+<hr/>
+$$
+\textbf{Null Hypothesis: Segment market affects cancellation.}
+$$
+<hr/>
+<br/>
+<br/>
+
+## 1.2 Review of Previous findings:
+
+We will be analyzing the different factors that may affect booking cancellations of hotels since as we previously mentioned bookings have decreased with the immersion of Covid -19.
+
+Booking cancellations play a major role in hotel success. According to the Wall Street Journal’s article, “Marriott Swings to Loss, Cites Demand Recovery From Covid-19 Lows”, the hotel industry is suffering through its worst period in modern times, as the pandemic has led to world-wide cutbacks in business travel and cancellations of conference events. Marriott revenue for the 3rd quarter fell 72% from a year earlier, that is why performing such a study is important especially in tough times since hotels need more data to increase their revenues, and avoid losses. 
+
+In addition, Conde Nast Traveler states that  hotels around the world, both big-brand and boutique, are showing cancellations flexibility in response to the virus. For instance, Four Seasons Hotels and Resorts was waiving cancellation fees at all hotels and resorts worldwide until April 30, provided they're canceled within 24 hours of arrival. Similarly, Hilton has enacted a similar response, issuing modification and cancellation waivers to reflect the travel climate. This shows the importance of booking cancellation policies in instiling guest confidence in booking.
+
+**Source**
+
+- Florio, B. (n.d.). How Hotel and Airbnb Cancellation Policies Are Changing Amid Coronavirus. Retrieved December 20,           2020, from https://www.cntraveler.com/story/coronavirus-hotel-cancellation-policy
+
+- Sebastian, D. (2020, August 10). Marriott Swings to Loss, Cites Demand Recovery From Covid-19 Lows. Retrieved December        20, 2020, from https://www.wsj.com/articles/marriott-swings-to-2q-loss-cites-recovery-11597059791
+
+
+
+
+# Part 2: Solving the problem 
+
+First, we have 32 variables, such as hotel, lead time, babies, including cancellation, so we will should only the column that we think it should be related with with cancellation of the hotel. Therefore, we end up with 15 variables including cancellation variable. Before we bring the data to analyzing data, we have to clean data due to the outliers and null values.
+
+
+## 2.1 Cleaning dataset step by step
+
+**Step 1**: checking null value in the dataset.
+
+```{r Checking null value}
+#Selected related columns
+hotel_canceled <- hotel_df[c(1:3,10:12,15:19,22:23,26:27)]
+
+#check null values before being removed
+null_values <- colSums(is.na(hotel_canceled))
+null_table <- data.frame(null_values)
+null_table
+```
+
+**Step2**: Imputing the null values  
+As we see above, there are 4 null values in the children column. Therefore, we have to fix these missing values. We decide to use removing null value method to solve the problem because it is less than 5% of all observation.
+
+```{r Replace missing values with median and remove}
+#replace missing values with median
+children_median <- median(hotel_canceled$children, na.rm = TRUE)
+hotel_canceled$children[is.na(hotel_canceled$children)] <- children_median
+
+#check null values after being removed
+null_values <- colSums(is.na(hotel_canceled))
+null_table <- data.frame(null_values)
+null_table
+```
+
+Now, our dataset get rid of the missing value problem.
+
+**Step 3**: Dealing with outliers
+Another problem we should focus on is outliers. First, we use the formula below to check whether our dataset has outliers. 
+
+<br/>
+<br/>
+<hr/>
+$$
+\textbf{Lower Limit: Q1 - IQR * 1.5 or Upper Limit: Q3 + IQR * 1.5}
+$$
+<hr/>
+<br/>
+<br/>
+
+The code below includes all functions to solve the outliers problem. 
+
+```{r All functions to solve the outliers}
+#Function to get lower boundary of the outliers
+get_lower_bound <- function(values){
+  quantile_values <- quantile(values, probs = c(0.25, 0.75)) # Get Q1 and Q3
+  outlier_value <- (quantile_values[2] - quantile_values[1]) * 1.5 # Get IQR * 1.5
+  lower <- quantile_values[1] - outlier_value
+  return(lower)
+}
+
+#Function to get upper boundary of the ouliers
+get_upper_bound <- function(values){
+  quantile_values <- quantile(values, probs = c(0.25, 0.75)) # Get Q1 and Q3
+  outlier_value <- (quantile_values[2] - quantile_values[1]) * 1.5 # Get IQR * 1.5
+  upper <- quantile_values[2] + outlier_value
+  return(upper)
+}
+
+
+#function for checking the outliers problem
+check_outliers <- function(name, values){
+  # Check outliers from the equation whether outliers are less than Q1 - IQR * 1.5 or more than Q3 + IQR * 1.5
+  lower <- get_lower_bound(values)
+  upper <- get_upper_bound(values)
+  
+  temp_col <- ifelse(values < lower | values > upper, 1, 0)
+  print(paste("The number of outliers in", name, ":", sum(temp_col)))
+  print(paste("Lower Bound :", lower))
+  print(paste("Upper Bound :", upper))
+}
+
+# The removed outliers function
+remove_outliers <- function(df, col_name){
+  if(col_name == "lead_time"){
+    return(subset(df, lead_time <= get_upper_bound(df$lead_time)))
+  } else if(col_name == "adults"){
+    return(subset(df, adults >= 0 & adults <= 4))
+  } else if(col_name == "children"){
+    return(subset(df, children >= 0 & children <= 3))
+  } else if(col_name == "babies"){
+    return(subset(df, babies >= 0 & babies <= 2))
+  } else if(col_name == "previous_cancellations"){
+    return(subset(df, previous_cancellations >= 0 & previous_cancellations <= 2))
+  } else if(col_name == "previous_bookings_not_canceled"){
+    return(subset(df, previous_bookings_not_canceled >= 0 & previous_bookings_not_canceled <= 6))
+  } else if(col_name == "booking_changes"){
+    return(subset(df, booking_changes >= 0 & booking_changes <= 5))
+  } else if(col_name == "days_in_waiting_list"){
+    return(subset(df, days_in_waiting_list == 0))
+  }
+}
+```
+
+**Outlier Checking: Adults **
+
+We check the number of outliers, upper limit and lower limit in adult column using `check_outliers()` function. In case, we would like to know the other variables, so we can remove the hashtag(#) in each of the factors.
+
+```{r Check the number of outliers}
+#check_outliers("lead_time", hotel_canceled$lead_time)
+#check_outliers("children", hotel_canceled$children)
+#check_outliers("babies", hotel_canceled$babies)
+#check_outliers("previous_cancellations", hotel_canceled$previous_cancellations)
+#check_outliers("previous_bookings_not_canceled", hotel_canceled$previous_bookings_not_canceled)
+#check_outliers("booking_changes", hotel_canceled$booking_changes)
+#check_outliers("days_in_waiting_list", hotel_canceled$days_in_waiting_list)
+check_outliers("adults", hotel_canceled$adults)
+```
+
+For more understanding on the data distribution, we  visualize the adults column by using a histogram to show the outliers.
+
+```{r Adults histogram with outliers,message=FALSE, warning=FALSE}
+lower<-get_lower_bound(hotel_canceled$adults)
+upper<-get_upper_bound(hotel_canceled$adults)
+
+ggplot(hotel_canceled, aes(x=adults)) + 
+  geom_histogram(varwidth = TRUE, alpha=0.2, fill="darkcyan") +
+  geom_vline(xintercept = lower , color = "cyan", size = 1) +
+  geom_vline(xintercept = upper, color = "red", linetype = "dashed")+
+  theme(legend.position="none", panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+                  panel.background = element_blank(), axis.line = element_line(colour = "black"),
+                  plot.title = element_text(hjust = 0.5)) +
+                  xlab("Adults") +
+                  ylab("Count")+
+                  ggtitle("Adult Outliers Checking")
+```
+
+
+From the result above, we can infer that their are some outliers in adult column. Also, lower boundary (cyan line) and upper boundary (red dashed line) are the same, which is in 2 adults. We sometimes get an error from the outliers equation when using only the equation to solve the outliers problem. For example, we might remove too much data due to the equation seeing them as outliers, but actually it is not.
+
+In our result, we think that it is impossible for upper and lower boundary to have the same result. Therefore, we continue checking whether the values outside the boundary are really outliers. Then we list the number of each value in the column as shown below.
+
+
+```{r  Frequncy of adults column}
+#List number of each adult group before being removed the outliers
+list_adults <- table(hotel_canceled$adults)
+list_adults_table <- data.frame(list_adults)
+list_adults_table
+```
+
+The result above shows that the values from 0 to 4 adults should not be the outliers because there are many observations in these intervals, and also the values are not significant. Thus, we keep these values and remove the rest.
+
+```{r Removed outliers of adults column}
+# Remove the outliers of adults
+hotel_canceled <- remove_outliers(hotel_canceled, "adults")
+
+#List number of each adult group after being removed the outliers
+list_adults <- table(hotel_canceled$adults)
+list_adults_table <- data.frame(list_adults)
+list_adults_table
+```
+
+The table above is the result after being removed the outliers, and the histogram chart below is the chart without the outliers.
+
+```{r Adults histogram without outliers,message=FALSE, warning=FALSE}
+ggplot(hotel_canceled, aes(x=adults)) + 
+  geom_histogram(varwidth = TRUE, alpha=0.2, fill="darkcyan") +
+  theme(legend.position="none", panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+                  panel.background = element_blank(), axis.line = element_line(colour = "black"),
+                  plot.title = element_text(hjust = 0.5)) +
+                  xlab("Adults") +
+                  ylab("Count")+
+                  ggtitle("Adult Outliers Checking")
+```
+
+To recap, as we can see from the formula above the data identify the upper limit and lower limit, which are 2 adults. Therefore, it does not make any sense to have only two people coming to the hotel. Therefore, we look at the actual values of the data showing that no adult has 403 cases, one adult has 23,027 cases, and the rest is 89,680 , 6,202 , 62 , 2 , and so on. Hence, we decided to keep some of them. For the case that has 0 to 4 adults, we keep them and remove the rest.
+
+**Outlier Checking: Children**
+
+For the column named children, we had better do step by step as in the adults column but to shorten the explanation, we will show only the number of each value in the column.
+
+```{r Frequncy of children column}
+#List number of each children group before being removed the outliers
+list_children <- table(hotel_canceled$children)
+list_children_table <- data.frame(list_children)
+list_children_table
+```
+
+As we can see, there is an outlier in the children column, which is 10 children.
+
+```{r Removed outliers of children column}
+#Remove the outliers of children
+hotel_canceled <- remove_outliers(hotel_canceled, "children")
+
+#List number of each children group after being removed the outliers
+list_children <- table(hotel_canceled$children)
+list_children_table <- data.frame(list_children)
+list_children_table
+```
+
+The table above is removed the outlier.
+
+**Outlier Checking: Lead Time**
+
+Another factor is lead time column. Since this factor is an continuous quantity, we cannot show it in the table form; therefore, we demonstrate the outliers of this column using a histogram.
+
+```{r Lead time histogram with outliers,message=FALSE, warning=FALSE}
+#Show the histogram of lead time before removing the outliers
+
+lower_outliers = get_lower_bound(hotel_canceled$lead_time)
+upper_outliers = get_upper_bound(hotel_canceled$lead_time)
+
+ggplot() + 
+  geom_histogram(aes(x=hotel_canceled$lead_time, y = (..count../sum(..count..)) * 100),varwidth = TRUE, alpha=0.5, fill="darkcyan") +
+  #geom_vline(xintercept = lower_outliers, color = "red") +
+  geom_vline(xintercept = upper_outliers, color = "red") +
+                  theme(legend.position="none", panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+                  panel.background = element_blank(), axis.line = element_line(colour = "black"), 
+                  plot.title = element_text(hjust = 0.5)) +
+                  xlab("Lead Time") +
+                  ylab("Percentage of Lead Time") +
+                  ggtitle("Lead Time Outliers Checking")
+```
+
+We can see that there are outliers in the chart on the right tail of the chart, and the vertical line shows the upper boundary of the outliers. Thus, we have to remove those outlier before using the data.
+
+```{r Removed outliers of lead time column,message=FALSE, warning=FALSE}
+#Remove the outliers of lead time
+hotel_canceled <- remove_outliers(hotel_canceled, "lead_time")
+
+#Show the histogram of lead time after removing the ouliers
+ggplot() + 
+  geom_histogram(aes(x=hotel_canceled$lead_time, y = (..count../sum(..count..)) * 100),varwidth = TRUE, alpha=0.5, 
+                 fill="darkcyan") +
+                  theme(legend.position="none", panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+                  panel.background = element_blank(), axis.line = element_line(colour = "black"), 
+                  plot.title = element_text(hjust = 0.5)) +
+                  xlab("Lead Time") +
+                  ylab("Percentage of Lead Time") +
+                  ggtitle("Lead Time Outliers Checking")
+```
+
+The figture above illustrates the outliers are removed from the dataset.
+
+**Outlier Checking: Booking Changes**
+
+The column named booking_changes is similar to both adults and children, so we solve the outlier problem with the same method. 
+
+```{r Frequncy of booking changes column }
+#List number of each booking changes group before being removed the outliers
+list_booking_changes <- table(hotel_canceled$booking_changes)
+list_booking_changes_table <- data.frame(list_booking_changes)
+list_booking_changes_table
+```
+
+The table above is the number of each value before removing the outliers.
+
+```{r Removed outliers of booking changes column}
+#Remove the outliers of booking changes
+hotel_canceled <- remove_outliers(hotel_canceled, "booking_changes")
+
+#List number of each booking changes group after being removed the outliers
+list_booking_changes <- table(hotel_canceled$booking_changes)
+list_booking_changes_table <- data.frame(list_booking_changes)
+list_booking_changes_table
+```
+
+After removing the outliers, the values in the column are changed as shown above.
+
+The rest factors that might have outliers are removed the outliers demonstrated in the chunk below.
+
+```{r Removed outliers of the rest columns}
+#Remove the outliers of the rest
+hotel_canceled <- remove_outliers(hotel_canceled, "babies")
+hotel_canceled <- remove_outliers(hotel_canceled, "previous_cancellations")
+hotel_canceled <- remove_outliers(hotel_canceled, "previous_bookings_not_canceled")
+```
+
+**Step 4**: Merging similar category 
+After finishing solving the numerical problem, we have to handle another categorical problem that we might find that in some datasets. They have the same meaning but different words, so we have to group them together to prevent over categorical values. 
+
+In our dataset, we also face this problem. We merge the similar categories together to solve the problem as shown below.
+
+```{r Group the similar categories}
+# Merge Similar Categories
+hotel_canceled$customer_type[hotel_canceled$customer_type == "Transient-Party"] <- "Group"
+hotel_canceled$market_segment[hotel_canceled$market_segment != "Direct" & hotel_canceled$market_segment != "Online TA"] <- "Offline TA/TO"
+hotel_canceled$distribution_channel[hotel_canceled$distribution_channel != "Direct" & hotel_canceled$distribution_channel != "TA/TO"] <- "Other"
+```
+
+Now, we are ready to analyse the data. After cleaning the data, the following is the table of our cleaned key attributes.
+
+## 2.2.variable selection: 
+
+To study our hypothesis: Segment market affects cancellation, we have picked the following variables after cleaning the data and removing outliers. 
+
+We have 7 key attributes: hotel, adults , children, lead_time, booking_changes, market_segment, and customer_type. Therefore, we pick up the possible factors that might affect the cancellation.The definition of each column is below: 
+
+**hotel**
+Type of residential between city hotel and resort hotel.
+
+**lead_time**
+Number of days that elapsed between the entering date of the booking into the PMS and the arrival date
+
+**adults**
+Number of adults
+
+**children**
+Number of children
+
+**booking_changes**
+Number of changes/amendments made to the booking from the moment the booking was entered on the PMS until the moment of check-in or cancellation
+
+**market_segment**
+Market segment designation. In categories, the term “TA” means “Travel Agents” and “TO” means “Tour Operators”
+
+**customer_type**
+Type of booking, assuming one of four categories: 
+Contract - when the booking has an allotment or other type of contract associated to it.
+Group – when the booking is associated to a group. 
+Transient – when the booking is not part of a group or contract, and is not associated to other transient booking.
+
+
+
+We select the key attributes to analyse our hypothesis. The table below shows the first 6 observations of the key attributes.
+
+```{r Key attributes}
+key_attributes <- hotel_canceled[c("is_canceled","hotel","lead_time","adults","children","booking_changes","market_segment","customer_type")]
+#data frame 
+head(key_attributes)                         
+```
+
+## 2.3 Data collection:
+**Reference:**
+
+- Mostipak, J. (2020, February 13). Hotel booking demand. Retrieved December 21, 2020, 
+    from https://www.kaggle.com/jessemostipak/hotel-booking-demand?select=hotel_bookings.csv
+  
+## 2.4 Data Analysis: 
+
+### Chart 1 : Compare Hotel vs Cancellation (bar chart)
+
+This is an important chart because we want to find customers' preference on types of hotels between the Resort hotel and the City hotel. As we can see from the chart below the trend of this chart is that most people tend to choose city hotel approximately one time more than resort hotel. However, the number of the cancellation in  the city hotel is also higher than the resort hotel. If the company would like to expand the location of hotel, they might choose to construct it in-town location rather than rural location.
+
+```{r The relationship between Hotel and Cancellation,message=FALSE}
+count_total <- key_attributes %>% 
+                group_by(hotel) %>% 
+                summarise(num_hotel = n())
+
+count_cancel <- key_attributes %>% 
+                group_by(hotel) %>% 
+                filter(is_canceled == 1) %>% 
+                summarise(num_hotel = n())
+
+count_cancel$hotel <- ifelse(count_cancel$hotel == "City Hotel", "Canceled City", "Canceled Resort")
+
+count_hotel <- rbind(count_total, count_cancel)
+
+bar_order <- c("City Hotel", "Resort Hotel", "Canceled City", "Canceled Resort")
+
+ggplot(count_hotel, aes(x = hotel, y = num_hotel, fill = hotel)) + 
+  scale_x_discrete(limits = bar_order) +
+  geom_col(position = "dodge", alpha = 0.5, width = 0.6) +
+  geom_bar(stat='identity', width = 0.3) +
+  ggtitle("The Relationship Between Hotels and Reservation") + 
+  xlab("Hotel Total                                 Hotel Canceled") + 
+  ylab("Number") +
+  scale_fill_manual(values=c("dimgray", "darkgray", "darkslategray3", "darkslategray4")) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+### Chart 2: Customer type vs Cancellation (in percent stacked bar chart)
+
+The total of customer types are Group, Transient, and Contract types. From the clients' trend, it will present which type of clients will be canceled more, so the company can have an inside information for further improvement on customer service. The chart below shows that the transient customer type is the one that canceled the most. 
+
+
+```{r The relationship between customer_type and Cancellation,message=FALSE}
+stacked_bar_data <- key_attributes %>% group_by(is_canceled, customer_type) %>% summarise(num_canceled = n())
+stacked_bar_data$is_canceled <- ifelse(stacked_bar_data$is_canceled == 1, "Canceled", "No cancled")
+names(stacked_bar_data)[names(stacked_bar_data) == "is_canceled"] <- "Cancellation"
+
+ggplot(data = stacked_bar_data, aes(y = num_canceled, x = customer_type,
+            fill = Cancellation)) + geom_bar(position = "fill", stat = "identity", alpha = 0.5) + 
+            ggtitle("The Relationship Between Customer Types and Cancellation") +
+            xlab("Customer Type") +
+            ylab("Percentage of Cancellation") +
+            scale_fill_brewer(palette = "Paired") +
+            theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+                  panel.background = element_blank(), axis.line = element_line(colour = "black"),
+                  plot.title = element_text(hjust = 0.5))
+```
+
+### Chart 3: Market segmentation chart (in percent)
+
+This is an important chart because the donuts chart presents the percentage of the market segmentation. As we can see from the chart below, the main segment market has 3 types. They are Direct customer, which is the people who booked the hotel by themselves. Another one is an Online Travel agency such as Booking.com and Agoda.com. The other is an Offline travel agency, which might be the company which the customer has to call them directly or visit the physical store for booking the hotel. Finally, this chart makes the hotels know that the biggest segment is the Online travel agent, and the second is the offline travel agents, so that the hotels can know which market to target most to decrease cancellations.
+
+```{r The relationship segment market (percent) pie chart,message=FALSE}
+market_segment_group <- key_attributes %>% group_by(market_segment) %>% 
+                        summarise(total = n()) %>% mutate(percentage = round((total / sum(total)) * 100, 1))
+
+market_segment_group <- market_segment_group %>% arrange(desc(market_segment)) %>%
+                        mutate(label_pos = cumsum(percentage) - 0.5*percentage)
+
+names(market_segment_group)[names(market_segment_group) == "market_segment"] <- "Segmentation"
+
+ggplot(market_segment_group, aes(x = 2, y = percentage, fill = Segmentation)) +
+  geom_bar(stat = "identity", color = "white", alpha = 0.5) +
+  coord_polar(theta = "y", start = 0)+
+  geom_text(aes(y = label_pos, label = paste(percentage, "%", sep = "")), color = "white") +
+  scale_fill_manual(values=c("darkcyan", "darkgoldenrod", "darkseagreen4")) +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  xlim(0.5, 2.5) +
+  ggtitle("The Percentage of Market Segmentation")
+```
+
+### Chart 4: The Relationship Between Market Segmentation and Cancellation (in percent)
+
+The circle packing chart shows the percent of cancellation of each market segment. It turns out that the offline travel agent group is the biggest group for canceling the reservation. From this chart we found that even though the online travel agent represents the biggest segment market;however, the offline travel agent had a higher percentage for cancellation. Therefore, market segmentation might affect the cancellation of hotels. From our perspective, we think the offline agent might have a  free cancellation promotion and that is why the highest percentage of cancellation.
+
+```{r The relationship between market segmentation and cancellation (in percent) chart,message=FALSE}
+market_segment_canceled_group <- key_attributes %>% group_by(market_segment) %>% filter(is_canceled == 1) %>% 
+                                  summarise(canceled_total = n()) %>% 
+                                  arrange(desc(market_segment)) %>% 
+                                  mutate(canceled_percentage = (canceled_total / market_segment_group$total) * 100)
+
+packing <- circleProgressiveLayout(market_segment_canceled_group$canceled_percentage, sizetype='area')
+packing$radius <- 0.95 * packing$radius
+
+market_segment_canceled_group <- cbind(market_segment_canceled_group, packing)
+
+plot_coor <- circleLayoutVertices(packing)
+
+ggplot() + 
+  geom_polygon(data = plot_coor, aes(x, y, group = id, fill = id), colour = "black", alpha = 0.3) +
+  scale_fill_viridis() +
+  geom_text(data = market_segment_canceled_group, aes(x, y, size = 2, label = paste(market_segment, "\n", 
+                      round(canceled_percentage, 1), "%", sep = "")), color="black") +
+  theme_void() + 
+  theme(legend.position="none", plot.title = element_text(hjust = 0.5)) + 
+  coord_equal() +
+  ggtitle("The Relationship Between Market Segmentation and Cancellation")
+```
+
+### Chart 5: The relationship between booking changes and  cancellations 
+
+The chart below shows us that the customers choose to cancel instead of changing their booking. The number of people who cancel the booking are pretty low between 1 and 5 times of changes. This shows that the companies lose a lot of customers who book the rooms. It will be good if they can catch the booking people. They will also  gain more profit for this group.
+
+```{r The relationship booking_changes vs cancellation chart, message=FALSE}
+count_book_changes_cancel <- key_attributes %>% 
+                            group_by(booking_changes) %>% 
+                            filter(is_canceled == 1) %>% 
+                            summarise(num = n())
+
+count_book_changes_cancel$booking_changes <- as.character(count_book_changes_cancel$booking_changes)
+
+ggplot(count_book_changes_cancel, aes(x = booking_changes, y = num)) + 
+  geom_col(position = "dodge", alpha = 0.3, fill = "red") +
+  ggtitle("The Relationship Between Booking Changes and Cancellations") + 
+  xlab("Number of Booking Changes") + 
+  ylab("Number of Cancellations") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+        panel.background = element_blank(), axis.line = element_line(colour = "black"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+## 2.5 Conlcusion from charts
+
+As we can see from the charts above, we see that people tend to go to city hotels rather than resort hotels. Furthermore, if we look at the data far deeper about what types of customers canceled the most, we found that the transient customer type tend to cancel more than others. Therefore, we then check market segmentation of hotel bookings and get the result that the biggest market is online travel agent markets - such as Booking.com, Hotel.com, and Traveloga.com - accounting for about half of the whole segment market in the hotel industry.However, the majority of cancellations are from offline travel agents, approximately 40%, when compared to the number of people who book an hotel offline only. All in all, the analysis’s result supports our hypothesis about the market segment affecting hotel cancellations.   
+
+We recommend hotels to target the the Transient customer type which make the biggest number of cancellations. These customer can be targeted through making better promotions for that type. Moreover, since booking with offline travel agents makes the biggest amount of cancellations, hotels should probably make stricter cancellation polices and apply them. This would protect hotels from losing the opportunity of another booking to happen. Customers also usually prefer canceling bookings rather than changing them so hotels should make sure to have a higher fine on cancellation and maybe no or minimal fine on changing bookings. Moreover, during Covid-19  hotel chains should probably  focus on marketing their city hotels if the have different branches. According to our analysis, customers prefer booking city hotels in general so they would be easier to market, moreover people might not travel to far far resorts during the pandemic.
+
+
+# Part 3: Modelling and Communication
+
+After we have finished the visualization section, we analyze data by using regression method. It helps us to get more understanding about the relationship between the variables.
+
+## 3.1 & 3.2 Modelling & Results presentation
+
+From our dataset, we decide to use logistic regression model because our response variable is a categorical variable.
+
+**Step 1**: Currently, some of the data are categorical variables. Therefore, we identify the categories variables using `as.factor()` function. 
+
+```{r Categorize data}
+# These are really categorical variable so lets tell R to convert them to factors
+hotel_canceled$hotel <- as.factor(hotel_canceled$hotel)
+hotel_canceled$market_segment <- as.factor(hotel_canceled$market_segment)
+hotel_canceled$distribution_channel <- as.factor(hotel_canceled$distribution_channel)
+hotel_canceled$deposit_type <- as.factor(hotel_canceled$deposit_type)
+hotel_canceled$customer_type <- as.factor(hotel_canceled$customer_type)
+```
+
+**Step 2**: We select the sample with `set.seed(1995)` for using the same sample of dataset. We can random any number in `set.seed()` function. Additionally, we have to separate dataset into 2 sets because we would like to test our model whether it can be used with other datasets or not. Therefore, we divide 80 percent of the dataset to be a train dataset named **train**, and the rest, 20 percent, is a test dataset called **test**.
+
+```{r Split the data}
+# split the data
+set.seed(1995)
+split <- sample.split(hotel_canceled$is_canceled, SplitRatio = 0.8)
+
+train <- subset(hotel_canceled, split == TRUE)
+test <- subset(hotel_canceled, split == FALSE)
+```
+
+**Step 3**: We use `glm()` to generate logistic regression model and also train the model with the train data.
+
+Dependent variable is **"is_canceled"** ; independent variables is **"market_segment"** 
+
+```{r glm() (only market segment)}
+logistic_regression_market <- glm(is_canceled ~ market_segment,
+                             data = train, family = "binomial")
+
+summary(logistic_regression_market)
+```
+
+The table demonstrates that market segment is significant, so the hypothesis is TRUE. In other words, market segment can affect the cancellation of hotels. 
+
+**Step 4**: Generate the predicted values for train dataset.
+
+```{r Market segment prediction}
+predicted_train_market_values <- predict(logistic_regression_market, train, type = "response")
+```
+
+We create the table to compare the actual values to the predicted values. The predicted values are TRUE when they are more than **0.5**; otherwise, they are FALSE. 
+
+The confusion matrix below is for the train dataset.
+
+```{r Confusion matrix for market segment}
+confirmed_train_market_table <- table(Actual_Value = train$is_canceled, Predicted_value = predicted_train_market_values > 0.5)
+
+confirmed_train_market_table
+```
+
+**Step 5**: After we get the relationship between actual values and predicted values, we would like to know how much accuracy it is. 
+
+```{r Accracy of market segment}
+accuracy_train_market <- (confirmed_train_market_table [[1,1]])/sum(confirmed_train_market_table )*100
+
+accuracy_train_market
+```
+
+As we can see from the confusion matrix and the accuracy result, it shows that the model accurate about 63.6 percent. However, the predicted values are only FALSE. Although the accuracy is good, we think that this model is not good enough to use since there is no TRUE value in the prediction. We know that the factors of cancellation are not only market segment as in key attributes on section 2. Thus, we decide to improve our model by focusing on every variable that might affect the cancellation.
+
+
+**Step 6**: Analysing all possibilities
+We repeat Step 3 to Step 5 again to compare the models.
+
+Dependent variable is **"is_canceled"** ; independent variables are hotel, lead_time, adults, children, babies, market_segment, distribution_channel, is_repeated_guest, previous_cancellations, previous_bookings_not_canceled, booking_changes, deposit_type, days_in_waiting_list,and customer_type.
+
+```{r glm() total variables}
+logistic_regression <- glm(is_canceled ~.,
+                             data = train, family = "binomial")
+
+summary(logistic_regression)
+```
+
+As we can see from above, "babies" and "days_in_waiting_list" columns are not significantly independent variables. Thus, we remove them from the list of the independent variables. 
+
+We simulate the regression model again to check what the actual values of coefficients should be. 
+
+```{r Removed unnecessary variables (babies, days_in_waiting_list)}
+logistic_regression <- glm(is_canceled ~ hotel + lead_time + adults + children + market_segment +
+                             distribution_channel + is_repeated_guest + previous_cancellations +
+                             previous_bookings_not_canceled + booking_changes + deposit_type + 
+                             customer_type,
+                             data = train, family = "binomial")
+
+summary(logistic_regression)
+```
+
+From the table above, there are some changes in the coefficients of each variable. Currently, all of the independent variables are significant. Although there are some variables such as **"market_segmentOffline TA/TO"** and **"distribution_channelTA/TO"** not significant, we cannot remove them as they are one of the categories variables. Hence, we keep them in our model.
+
+**Converting Coefficients**
+
+To interpret the odds of being canceled, we have to take an exponential to the coefficients of the logistic regression model. 
+
+```{r Coefficients}
+coef <- tidy(logistic_regression)
+coef$estimate <- exp(coef$estimate)
+
+coef
+```
+
+The table above shows that the odds of being canceled of online market segment is around 2.31 times more than that of direct market segment. However, the odds ratio between offline market segment and direct market segment is almost 1. In other words, the odds of these two market segment are the same rate. Additionally, one unit increase in the lead time will increase the odds of being canceled by 1.0044 times.
+
+According to the table, the odds ratio between group customers and contract customers is approximately 2.3 times, while there is about 3.3 times in the odds ratio between transient customers and contract customers. It is interesting to note that the odds of previous cancellations is over 100, and the ratio between non-refund deposit type and no deposit is extremely high at about 300.
+
+
+**Predicting Values**: Generate the predicted values for test and train datasets. 
+
+```{r Predicting Values from total variable}
+# run the test data through the model
+predicted_train_values <- predict(logistic_regression, train, type = "response")
+
+predicted_test_values <- predict(logistic_regression, test, type = "response")
+```
+ 
+The confusion matrix below is for the train dataset.
+
+```{r Validate the train model}
+#validate the train model
+confirmed_train_table <- table(Actual_Value = train$is_canceled, Predicted_value = predicted_train_values > 0.5)
+
+confirmed_train_table
+```
+
+The confusion matrix below is for the test dataset.
+
+```{r Validate the test model}
+#validate the test model
+confirmed_test_table <- table(Actual_Value = test$is_canceled, Predicted_value = predicted_test_values > 0.5)
+
+confirmed_test_table 
+```
+
+**Accuracy**: After we get the relationship between actual values and predicted values, we would like to know how much accuracy it is. 
+
+```{r Accuracy of tatol variables}
+#accuracy
+accuracy_train <- (confirmed_train_table [[1,1]]+ confirmed_train_table [[2,2]])/sum(confirmed_train_table )*100
+accuracy_train
+
+accuracy_test <- (confirmed_test_table [[1,1]]+ confirmed_test_table [[2,2]])/sum(confirmed_test_table )*100
+accuracy_test
+```
+
+We receive the accuracy for train dataset accounting for 77.2 percent and for the test dataset, 77.0 percent. When we compare to the first model (only market segment), our new model has the better result than that of the first model. Our accuracy improves from 63.6 percent to 77.2 percent. Thus, it had better use the new model instead of the old model. All in all, the results from train and test dataset also show that the model accurate enough to predict hotel cancellations.
+
+**Summary**
+From our analysis, we found that market segment affects the rate of cancellation of hotels. There are 3 different groups of market segmentation: Direct, Offline travel agents, and Online travel agents which are important for reducing the cancellation and increasing the booking. From these three groups, the highest cancellation is from Online travel agents. Therefore, the company should focus on solving the problem of this group. There are many solution to solve the problem, but we suggest 3 solution:
+
+1. The clients might have to pay cancellation fee if they decide to cancel the hotel booking. 
+
+2. The company might consider about some online travel agents, which have bad services, so the company can rescind being a partnership with the travel agents. This is because the hotel lost opportunity cost or benefit to gain customers.
+
+3. Hotel should do marketing on influencers instead of celebrities because marketing cost on influencers is much cheaper than the celebrities. Therefore, the company can hire many influencers, and this method (Word-of-mouth) makes the viewers feel like a story telling from their close friends. Normally, when people see the repeated thing, they would be persuaded to try this interesting things which is similar to psychology theory. Moreover, the more influencers the hotels hire, the more positive brand awareness of the hotels are.
+
+These three suggestions are only for the online marketing process, so the another segment which is also good for marketing is direct marketing. Since the direct marketing has the least cancellation which is confirmed from the Chart 4, the hotels then should pay closely attention on this segment. The more it is reduced, the more revenue the hotels can possibly receive. Thus, we provide some recommendations to reduce a cancellation and attract more customers which are:
+
+1. The royal promotion. It means the group of customers who repeatedly reserve the room every vacation or every year. Then, the hotels should provide some spacial promotion to attract them to revisit the place again which can be a membership discount and/or special upgrade for the room types. For example, the customers who have a membership card will receive a 10% discount or the first priority to reserve the room on high season, and if they have booked the room more than 5 times, they can receive an upgrade of the room types. 
+
+2. The services and facilities. These are the services and facilities that provide to customers who have reserved the rooms and are going to stay in the hotel. For example, the services might be picking up and dropping off the customers at the airport and/or free breakfast. They are important details which will increase the customers lifetime value for the business. These small details will also increase customers' impression on the hotels and they might have a chance to be membership in the future too.
+
+3. The inside information. It means when the customers directly contact the hotels they will receive more correct information, and if they have some problems and/or complains on the reservation, the companies can easily mitigate and control these problems instantly.
+
+From all of the suggestion on both online and direct marketing, the hotel will not only reduce a chance of cancellation from the customers but also might importantly improve an impression on services when they combine all of these recommendations. Reaching to the higher accuracy of predicting cancellation, we then added more factors which have an effect on the cancellation. The more related factors we added, the more accuracy of the prediction we can receive. However, adding more unnecessary factors will be overfitting the model and the prediction result will then have less accurate.
